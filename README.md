@@ -9,9 +9,7 @@ The project uses **FAISS** as the vector database for fast semantic search.
 ## 🚀 Features
 
 * **Local LLM** — Uses Qwen 3 4B in MLX for optimized performance on Apple Silicon.
-* **RAG Pipeline** — Retrieval-Augmented Generation for more accurate and context-aware responses.
 * **FAISS Vector Store** — Efficient semantic search for PDF content.
-* **PDF Support** — Extracts text from PDF files using PyMuPDF (`fitz`).
 * **No Internet Required** — Fully offline inference.
 
 ---
