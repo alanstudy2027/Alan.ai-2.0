@@ -22,4 +22,9 @@ The project uses **FAISS** as the vector database for fast semantic search.
 * **Language:** Python
 
 ---
-![Demo Screenshot](public/logo.png "Project Demo")
+## 📸 Project Screenshot
+
+![Demo Screenshot](demo1.jpeg "Project Demo")
+![Demo Screenshot](demo2.jpeg "Project Demo")
+![Demo Screenshot](demo3.jpeg "Project Demo")
+![Demo Screenshot](demo4.jpeg "Project Demo")
