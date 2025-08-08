@@ -5,6 +5,24 @@ import "./chat.css";
 import { FaRobot } from "react-icons/fa6";
 import { MdMultilineChart } from "react-icons/md";
 import { MdEventAvailable } from "react-icons/md";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "prismjs";
+import "prismjs/themes/prism-tomorrow.css";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-java";
+import "prismjs/components/prism-c";
+import "prismjs/components/prism-cpp";
+import "prismjs/components/prism-csharp";
+import "prismjs/components/prism-go";
+import "prismjs/components/prism-ruby";
+import "prismjs/components/prism-swift";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-sql";
+import "prismjs/components/prism-json";
+import "prismjs/components/prism-yaml";
 
 const ChatTab = () => {
   const [messages, setMessages] = useState([]);
@@ -14,158 +32,92 @@ const ChatTab = () => {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // Function to render formatted text with bold support
-  const renderFormattedText = (text) => {
-    if (!text) return null;
+  // Enhanced Markdown renderer component
+  const MarkdownRenderer = ({ content }) => {
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Simplified code block handler
+          code({ node, inline, className, children, ...props }) {
+            if (inline) {
+              return (
+                <code
+                  className="bg-gray-700 px-1 py-0.5 rounded text-sm"
+                  {...props}
+                >
+                  {children}
+                </code>
+              );
+            }
 
-    // First handle code blocks
-    const codeBlockRegex = /```(\w*)\n([\s\S]*?)\n```/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    // Split text into code blocks and non-code parts
-    while ((match = codeBlockRegex.exec(text)) !== null) {
-      // Add text before code block
-      if (match.index > lastIndex) {
-        parts.push({
-          type: "text",
-          content: text.slice(lastIndex, match.index),
-        });
-      }
-
-      // Add code block
-      parts.push({
-        type: "code",
-        language: match[1],
-        content: match[2],
-      });
-
-      lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text after last code block
-    if (lastIndex < text.length) {
-      parts.push({
-        type: "text",
-        content: text.slice(lastIndex),
-      });
-    }
-
-    return parts.map((part, index) => {
-      if (part.type === "code") {
-        return (
-          <pre
-            key={`code-${index}`}
-            className="bg-[#141414FF] rounded-xl p-6 my-4 overflow-x-auto"
-          >
-            <code className={`language-${part.language}`}>{part.content}</code>
-          </pre>
-        );
-      }
-
-      // Process non-code parts with existing markdown formatting
-      const lines = part.content.split("\n");
-      let inBlockquote = false;
-
-      return lines.map((line, lineIndex) => {
-        if (line.trim() === "---") {
-          return (
-            <hr
-              key={`hr-${index}-${lineIndex}`}
-              className="my-4 border-[#424242]"
-            />
-          );
-        }
-
-        if (line.trim().startsWith(">")) {
-          if (!inBlockquote) {
-            inBlockquote = true;
             return (
-              <blockquote
-                key={`block-${index}-${lineIndex}`}
-                className="border-l-4 border-[#424242] pl-4 my-2 text-gray-300"
-              >
-                {line.replace(/^>\s*/, "")}
-              </blockquote>
+              <pre className="bg-[#1A1A1AFF] rounded-lg text-sm p-4 my-3 overflow-x-auto">
+                <p className="text-[#ACACACFF]">Code</p>
+                <hr className="my-2 mb-5 text-[#3D3D3DFF]" />
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              </pre>
             );
-          }
-          return (
-            <span key={`block-cont-${index}-${lineIndex}`}>
-              {line.replace(/^>\s*/, "")}
-            </span>
-          );
-        } else if (inBlockquote) {
-          inBlockquote = false;
-        }
-
-        const elements = [];
-        let remaining = line;
-
-        if (remaining.startsWith("## ")) {
-          return (
-            <h2
-              key={`h2-${index}-${lineIndex}`}
-              className="text-xl font-bold mt-4 mb-2"
-            >
-              {remaining.substring(3)}
-            </h2>
-          );
-        } else if (remaining.startsWith("### ")) {
-          return (
-            <h3
-              key={`h3-${index}-${lineIndex}`}
-              className="text-lg font-semibold mt-3 mb-1"
-            >
-              {remaining.substring(4)}
-            </h3>
-          );
-        }
-
-        while (remaining.length > 0) {
-          const boldMatch = remaining.match(/\*\*(.*?)\*\*/);
-          const italicMatch = remaining.match(/\*(.*?)\*/);
-
-          if (
-            boldMatch &&
-            (!italicMatch || boldMatch.index < italicMatch.index)
-          ) {
-            if (boldMatch.index > 0) {
-              elements.push(remaining.substring(0, boldMatch.index));
-            }
-            elements.push(
-              <strong key={`bold-${index}-${lineIndex}-${elements.length}`}>
-                {boldMatch[1]}
-              </strong>
-            );
-            remaining = remaining.substring(
-              boldMatch.index + boldMatch[0].length
-            );
-          } else if (italicMatch) {
-            if (italicMatch.index > 0) {
-              elements.push(remaining.substring(0, italicMatch.index));
-            }
-            elements.push(
-              <em key={`italic-${index}-${lineIndex}-${elements.length}`}>
-                {italicMatch[1]}
-              </em>
-            );
-            remaining = remaining.substring(
-              italicMatch.index + italicMatch[0].length
-            );
-          } else {
-            elements.push(remaining);
-            remaining = "";
-          }
-        }
-
-        return (
-          <p key={`line-${index}-${lineIndex}`} className="whitespace-pre-wrap">
-            {elements}
-          </p>
-        );
-      });
-    });
+          },
+          // Other markdown components
+          h1: ({ node, ...props }) => (
+            <h1 className="text-2xl font-bold my-4" {...props} />
+          ),
+          h2: ({ node, ...props }) => (
+            <h2 className="text-xl font-bold my-3" {...props} />
+          ),
+          h3: ({ node, ...props }) => (
+            <h3 className="text-lg font-semibold my-2" {...props} />
+          ),
+          p: ({ node, ...props }) => (
+            <p className="my-2 whitespace-pre-wrap" {...props} />
+          ),
+          a: ({ node, ...props }) => (
+            <a
+              className="text-blue-400 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+              {...props}
+            />
+          ),
+          blockquote: ({ node, ...props }) => (
+            <blockquote
+              className="border-l-4 border-gray-500 pl-4 my-2 italic text-gray-300"
+              {...props}
+            />
+          ),
+          ul: ({ node, ...props }) => (
+            <ul className="list-disc pl-5 my-2" {...props} />
+          ),
+          ol: ({ node, ...props }) => (
+            <ol className="list-decimal pl-5 my-2" {...props} />
+          ),
+          li: ({ node, ...props }) => <li className="my-1" {...props} />,
+          table: ({ node, ...props }) => (
+            <div className="overflow-x-auto my-3 rounded-xl">
+              <table className="w-full" {...props} />
+            </div>
+          ),
+          thead: ({ node, ...props }) => <thead className="" {...props} />,
+          th: ({ node, ...props }) => (
+            <th
+              className="border-b border-[#424242] p-2 text-left"
+              {...props}
+            />
+          ),
+          td: ({ node, ...props }) => (
+            <td className="border-b border-[#2C2C2C] p-2" {...props} />
+          ),
+          hr: ({ node, ...props }) => (
+            <hr className="my-4 border-[#424242]" {...props} />
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    );
   };
 
   // Auto-resize textarea
@@ -292,7 +244,7 @@ const ChatTab = () => {
         color: "rgba(243, 243, 243, 1)",
         width: "100%",
       }}
-      className="flex flex-col rounded-3xl p-2 justify-center items-center"
+      className="flex flex-col rounded-3xl p-4 justify-center items-center"
     >
       {hasUserSentMessage && (
         <div
@@ -405,46 +357,46 @@ const ChatTab = () => {
             </div>
           </div>
         )}
-
-        {/* Messages */}
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex my-6  ${
-              message.sender === "user" ? "justify-end" : "justify-start"
-            }`}
-          >
+        <div style={{ marginBottom: "160px" }}>
+          {/* Messages */}
+          {messages.map((message) => (
             <div
-              className={`p-2 rounded-xl ${
-                message.sender === "user"
-                  ? "bg-[#303030] max-w-xs md:max-w-xs lg:max-w-2xl my-4 px-5 p-3"
-                  : " w-full my-3"
+              key={message.id}
+              className={`flex my-4 ${
+                message.sender === "user" ? "justify-end" : "justify-start"
               }`}
             >
-              {message.sender === "user" ? (
-                message.isCode ? (
-                  <pre className="whitespace-pre-wrap bg-gray-800 p-3 rounded-md overflow-x-auto">
-                    <code>{message.text}</code>
-                  </pre>
+              <div
+                className={`p-2 rounded-xl ${
+                  message.sender === "user"
+                    ? "bg-[#303030] max-w-xs md:max-w-xs lg:max-w-2xl my-4 px-5 p-3"
+                    : "w-full my-3"
+                }`}
+              >
+                {message.sender === "user" ? (
+                  message.isCode ? (
+                    <pre className="whitespace-pre-wrap bg-gray-800 p-3 rounded-md overflow-x-auto">
+                      <code>{message.text}</code>
+                    </pre>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{message.text}</p>
+                  )
                 ) : (
-                  <p className="whitespace-pre-wrap">{message.text}</p>
-                )
-              ) : (
-                <div className="flex items-start">
-                  <div className="mr-2 mt-1">
-                    <div className="rounded-full flex items-start justify-center text-indigo-600">
-                      <img src={logo} className="h-6" alt="" />
+                  <div className="flex items-start">
+                    <div className="mr-2 mt-2">
+                      <div className="rounded-full flex items-start justify-center text-indigo-600">
+                        <img src={logo} className="h-6" alt="" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <MarkdownRenderer content={message.text} />
                     </div>
                   </div>
-                  <p className="flex-1 whitespace-pre-wrap">
-                    {renderFormattedText(message.text)}
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-
+          ))}
+        </div>
         <div ref={messagesEndRef} />
       </div>
       {/* Input area */}
