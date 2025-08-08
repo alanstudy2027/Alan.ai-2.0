@@ -18,7 +18,7 @@ The project uses **FAISS** as the vector database for fast semantic search.
 
 ## 🛠️ Tech Stack
 
-* **LLM:** [Qwen 3 4B (MLX)](https://huggingface.co/Qwen)
+* **LLM:** [Qwen 3 4B (MLX)](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit)
 * **Vector Database:** [FAISS](https://faiss.ai/)
 * **Embeddings:** [Sentence Transformers](https://www.sbert.net/)
 * **Language:** Python
