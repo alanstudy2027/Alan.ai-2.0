@@ -22,3 +22,4 @@ The project uses **FAISS** as the vector database for fast semantic search.
 * **Language:** Python
 
 ---
+![Demo Screenshot](public/logo.png "Project Demo")
