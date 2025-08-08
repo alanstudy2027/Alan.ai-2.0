@@ -1,7 +1,7 @@
 
 # 📄 Qwen 3 4B (MLX) + FAISS + PDF RAG Chatbot
 
-A Retrieval-Augmented Generation (RAG) application that allows you to **chat with the contents of a PDF** using the **Qwen 3 4B** model in the **MLX architecture** for Apple Silicon.
+A realtime chatbot application that allows you to chat using the **Qwen 3 4B** model in the **MLX architecture** for Apple Silicon.
 The project uses **FAISS** as the vector database for fast semantic search.
 
 ---
