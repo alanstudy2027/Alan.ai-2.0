@@ -84,7 +84,7 @@ const ChatTab = () => {
           ),
           blockquote: ({ node, ...props }) => (
             <blockquote
-              className="border-l-4 border-gray-500 pl-4 my-2 italic text-gray-300"
+              className="border-l-2 border-[#7E7E7EFF] pl-4 my-5 italic text-[#999999FF]"
               {...props}
             />
           ),
@@ -111,7 +111,7 @@ const ChatTab = () => {
             <td className="border-b border-[#2C2C2C] p-2" {...props} />
           ),
           hr: ({ node, ...props }) => (
-            <hr className="my-4 border-[#424242]" {...props} />
+            <hr className="my-6 border-[#424242]" {...props} />
           ),
         }}
       >
@@ -357,8 +357,10 @@ const ChatTab = () => {
             </div>
           </div>
         )}
+
         <div style={{ marginBottom: "160px" }}>
           {/* Messages */}
+
           {messages.map((message) => (
             <div
               key={message.id}
@@ -375,7 +377,7 @@ const ChatTab = () => {
               >
                 {message.sender === "user" ? (
                   message.isCode ? (
-                    <pre className="whitespace-pre-wrap bg-gray-800 p-3 rounded-md overflow-x-auto">
+                    <pre className="whitespace-pre-wrap p-3 rounded-md overflow-x-auto">
                       <code>{message.text}</code>
                     </pre>
                   ) : (
@@ -383,20 +385,37 @@ const ChatTab = () => {
                   )
                 ) : (
                   <div className="flex items-start">
-                    <div className="mr-2 mt-2">
-                      <div className="rounded-full flex items-start justify-center text-indigo-600">
-                        <img src={logo} className="h-6" alt="" />
+                    {message.text ? (
+                      <div className="flex gap-0">
+                        <div className="mr-2 mt-2">
+                          <div className="rounded-full flex items-start justify-center text-indigo-600">
+                            <img src={logo} className="h-6" alt="" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <MarkdownRenderer content={message.text} />
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex-1">
-                      <MarkdownRenderer content={message.text} />
-                    </div>
+                    ) : (
+                      <div className="flex gap-4">
+                        <p className="text-[#8A8A8AFF]">Generating</p>
+                        <div class="spinner">
+                          <div></div>
+                          <div></div>
+                          <div></div>
+                          <div></div>
+                          <div></div>
+                          <div></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
           ))}
         </div>
+
         <div ref={messagesEndRef} />
       </div>
       {/* Input area */}
