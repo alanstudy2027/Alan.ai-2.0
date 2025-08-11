@@ -7,23 +7,8 @@ import { MdMultilineChart } from "react-icons/md";
 import { MdEventAvailable } from "react-icons/md";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "prismjs";
-import "prismjs/themes/prism-tomorrow.css";
-import "prismjs/components/prism-javascript";
-import "prismjs/components/prism-python";
-import "prismjs/components/prism-java";
-import "prismjs/components/prism-c";
-import "prismjs/components/prism-cpp";
-import "prismjs/components/prism-csharp";
-import "prismjs/components/prism-go";
-import "prismjs/components/prism-ruby";
-import "prismjs/components/prism-swift";
-import "prismjs/components/prism-typescript";
-import "prismjs/components/prism-bash";
-import "prismjs/components/prism-sql";
-import "prismjs/components/prism-json";
-import "prismjs/components/prism-yaml";
-
+import { PrismAsync as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 const ChatTab = () => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
@@ -34,92 +19,87 @@ const ChatTab = () => {
 
   // Enhanced Markdown renderer component
   const MarkdownRenderer = ({ content }) => {
-    return (
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // Simplified code block handler
-          code({ node, inline, className, children, ...props }) {
-            if (inline) {
-              return (
-                <code
-                  className="bg-gray-700 px-1 py-0.5 rounded text-sm"
-                  {...props}
-                >
-                  {children}
-                </code>
-              );
-            }
-
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code({ node, inline, className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || '');
+          
+          // Handle code blocks
+          if (!inline && match) {
             return (
-              <pre className="bg-[#1A1A1AFF] rounded-lg text-sm p-4 my-3 overflow-x-auto">
-                <p className="text-[#ACACACFF]">Code</p>
-                <hr className="my-2 mb-5 text-[#3D3D3DFF]" />
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              </pre>
+              <div className="relative my-4">
+                <div className="absolute right-3 top-2 text-xs text-gray-400 bg-[#1A1A1A] px-2 py-1 rounded-bl rounded-tr">
+                  {match[1]}
+                </div>
+                <pre className="bg-[#1A1A1A] p-4 text-sm rounded-lg overflow-x-auto">
+                  <code>{children}</code>
+                </pre>
+              </div>
             );
-          },
-          // Other markdown components
-          h1: ({ node, ...props }) => (
-            <h1 className="text-2xl font-bold my-4" {...props} />
-          ),
-          h2: ({ node, ...props }) => (
-            <h2 className="text-xl font-bold my-3" {...props} />
-          ),
-          h3: ({ node, ...props }) => (
-            <h3 className="text-lg font-semibold my-2" {...props} />
-          ),
-          p: ({ node, ...props }) => (
-            <p className="my-2 whitespace-pre-wrap" {...props} />
-          ),
-          a: ({ node, ...props }) => (
-            <a
-              className="text-blue-400 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-              {...props}
-            />
-          ),
-          blockquote: ({ node, ...props }) => (
-            <blockquote
-              className="border-l-2 border-[#7E7E7EFF] pl-4 my-5 italic text-[#999999FF]"
-              {...props}
-            />
-          ),
-          ul: ({ node, ...props }) => (
-            <ul className="list-disc pl-5 my-2" {...props} />
-          ),
-          ol: ({ node, ...props }) => (
-            <ol className="list-decimal pl-5 my-2" {...props} />
-          ),
-          li: ({ node, ...props }) => <li className="my-1" {...props} />,
-          table: ({ node, ...props }) => (
-            <div className="overflow-x-auto my-3 rounded-xl">
-              <table className="w-full" {...props} />
-            </div>
-          ),
-          thead: ({ node, ...props }) => <thead className="" {...props} />,
-          th: ({ node, ...props }) => (
-            <th
-              className="border-b border-[#424242] p-2 text-left"
-              {...props}
-            />
-          ),
-          td: ({ node, ...props }) => (
-            <td className="border-b border-[#2C2C2C] p-2" {...props} />
-          ),
-          hr: ({ node, ...props }) => (
-            <hr className="my-6 border-[#424242]" {...props} />
-          ),
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    );
-  };
-
+          }
+          // Handle inline code
+          return (
+            <code className="bg-[#4A4A4AFF] px-1.5 py-0.5 rounded text-sm font-mono">
+              {children}
+            </code>
+          );
+        },
+        h1: ({ node, ...props }) => <h1 className="text-2xl font-bold my-4" {...props} />,
+        h2: ({ node, ...props }) => <h2 className="text-xl font-bold my-3" {...props} />,
+        h3: ({ node, ...props }) => <h3 className="text-lg font-semibold my-2" {...props} />,
+        p: ({ node, ...props }) => <p className="my-2 whitespace-pre-wrap" {...props} />,
+        a: ({ node, ...props }) => (
+          <a 
+            className="text-blue-400 hover:underline" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            {...props} 
+          />
+        ),
+        blockquote: ({ node, ...props }) => (
+          <blockquote 
+            className="border-l-3 border-[#A8A8A8FF] pl-4 my-8 italic text-[#D8D8D8FF]" 
+            {...props} 
+          />
+        ),
+        ul: ({ node, ...props }) => (
+          <ul className="list-disc pl-5 my-2" {...props} />
+        ),
+        ol: ({ node, ...props }) => (
+          <ol className="list-decimal pl-5 my-2" {...props} />
+        ),
+        li: ({ node, ...props }) => <li className="my-1" {...props} />,
+        table: ({ node, ...props }) => (
+          <div className="overflow-x-auto my-4 rounded-lg border border-[#424242]">
+            <table className="w-full" {...props} />
+          </div>
+        ),
+        thead: ({ node, ...props }) => (
+          <thead className="bg-[#2C2C2C]" {...props} />
+        ),
+        th: ({ node, ...props }) => (
+          <th 
+            className="border-b border-[#424242] p-3 text-left font-semibold" 
+            {...props} 
+          />
+        ),
+        td: ({ node, ...props }) => (
+          <td 
+            className="border-b border-[#2C2C2C] p-3" 
+            {...props} 
+          />
+        ),
+        hr: ({ node, ...props }) => (
+          <hr className="my-6 border-[#424242]" {...props} />
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+};
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -161,7 +141,7 @@ const ChatTab = () => {
     setMessages((prev) => [...prev, newAIMessage]);
 
     try {
-      const response = await fetch("http://127.0.0.1:5000/api/chat/stream", {
+      const response = await fetch("http://127.0.0.1:5006/api/chat/stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -385,7 +365,7 @@ const ChatTab = () => {
                   )
                 ) : (
                   <div className="flex items-start">
-                    {message.text ? (
+                    {message.text  ? (
                       <div className="flex gap-0">
                         <div className="mr-2 mt-2">
                           <div className="rounded-full flex items-start justify-center text-indigo-600">
