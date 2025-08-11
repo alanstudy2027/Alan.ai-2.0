@@ -3,12 +3,16 @@ from flask_cors import CORS
 from mlx_lm import load, stream_generate
 import json
 import numpy as np
-import faiss
 from sentence_transformers import SentenceTransformer
 import time
 import random
 import re
 import threading
+import fitz  # PyMuPDF
+import faiss
+import os
+import tempfile
+import uuid
 
 app = Flask(__name__)
 CORS(app)
@@ -21,6 +25,160 @@ embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 conversation_lock = threading.Lock()
 conversation_embeddings = []
 conversation_messages = []
+
+document_index = None
+document_chunks = []
+uploaded_documents = {}
+
+def extract_text_from_pdf(file_path):
+    """Extract text from PDF document"""
+    text_list = []
+    doc = fitz.open(file_path)
+    for page in doc:
+        text = page.get_text().strip()
+        if text:
+            text_list.append(text)
+    return text_list
+
+def create_vector_index(text_chunks):
+    """Create FAISS index from text chunks"""
+    embeddings = embedding_model.encode(text_chunks)
+    embeddings = np.array(embeddings, dtype='float32')
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
+    return index, len(text_chunks)
+
+@app.route('/api/upload', methods=['POST'])
+def upload_document():
+    """Handle document upload and processing"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    try:
+        # Save the file temporarily
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in ['.pdf', '.docx', '.txt']:
+            return jsonify({'error': 'Unsupported file type'}), 400
+        
+        # Create a temp file
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, f"doc_{uuid.uuid4()}{file_ext}")
+        file.save(temp_path)
+        
+        # Process the document
+        if file_ext == '.pdf':
+            chunks = extract_text_from_pdf(temp_path)
+        else:
+            # For other file types you'd implement similar extractors
+            with open(temp_path, 'r') as f:
+                chunks = [f.read()]
+        
+        # Create vector index
+        index, num_chunks = create_vector_index(chunks)
+        
+        # Store document info
+        doc_id = str(uuid.uuid4())
+        uploaded_documents[doc_id] = {
+            'index': index,
+            'chunks': chunks,
+            'filename': file.filename,
+            'path': temp_path
+        }
+        
+        # Clean up
+        os.remove(temp_path)
+        
+        return jsonify({
+            'document': file.filename,
+            'chunks': num_chunks,
+            'doc_id': doc_id
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/chat/rag', methods=['POST'])
+def chat_with_document():
+    """Handle RAG-based chat with uploaded document"""
+    data = request.get_json()
+    query = data.get('message', '').strip()
+    doc_id = data.get('doc_id', '')
+    
+    if not query:
+        return jsonify({'error': 'Empty query'}), 400
+    
+    if doc_id not in uploaded_documents:
+        return jsonify({'error': 'Document not found'}), 404
+    
+    try:
+        # Get document data
+        doc_data = uploaded_documents[doc_id]
+        index = doc_data['index']
+        chunks = doc_data['chunks']
+        
+        # Search in vector DB
+        query_vector = embedding_model.encode([query]).astype('float32')  # Fixed: changed embed_model to embedding_model
+        scores, indices = index.search(query_vector, k=3)  # Get top 3 chunks
+        
+        # Retrieve relevant context
+        context = "\n\n".join([chunks[i] for i in indices[0]])
+        
+        # Prepare prompt
+        prompt = f"""
+        You are an AI assistant that answers questions based only on the given context.
+
+        <UserQuestion>
+        {query}
+        </UserQuestion>
+
+        <RelevantContext>
+        {context}
+        </RelevantContext>
+
+        Instructions:
+        1. Answer using ONLY the provided context.
+        2. Be concise and accurate.
+        3. Format your response with Markdown:
+           - Use bullet points for lists
+           - Use tables for comparisons
+           - Use headings to organize content
+        4. If the answer isn't in the context, say:
+           "I couldn't find relevant information in the document."
+        """
+        
+        # Generate response
+        if tokenizer.chat_template is not None:
+            messages = [{"role": "user", "content": prompt}]
+            prompt = tokenizer.apply_chat_template(
+                messages, add_generation_prompt=True
+            )
+        
+        def generate_stream():
+            full_response = ""
+            for chunk in stream_generate(
+                model,
+                tokenizer,
+                prompt=prompt,
+                max_tokens=1000
+            ):
+
+                token_id = chunk.token
+                token_text = tokenizer.decode([token_id], skip_special_tokens=True)
+                full_response += token_text
+                yield f"data: {json.dumps({'token': {'text': token_text}})}\n\n"
+            yield "data: [DONE]\n\n"
+        
+        return Response(stream_with_context(generate_stream()), content_type='text/event-stream')
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ... [rest of your code remains exactly the same] ...
 
 def get_relevant_context(user_input, k=3):
     """Find similar past messages."""
