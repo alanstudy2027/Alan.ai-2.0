@@ -8,19 +8,17 @@ from sentence_transformers import SentenceTransformer
 import time
 import random
 import re
+import threading
 
 app = Flask(__name__)
 CORS(app)
 
-# Load MLX model and tokenizer
+# Initialize models
 model, tokenizer = load("mlx-community/Qwen3-4B-Instruct-2507-4bit")
-
-# Initialize FAISS and embedding model
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-dimension = 384
-faiss_index = faiss.IndexFlatL2(dimension)
 
-# Conversation storage
+# Conversation storage with thread lock
+conversation_lock = threading.Lock()
 conversation_embeddings = []
 conversation_messages = []
 
@@ -28,11 +26,14 @@ def get_relevant_context(user_input, k=3):
     """Find similar past messages."""
     if not conversation_embeddings:
         return []
+    
     input_embedding = embedding_model.encode([user_input])[0].astype('float32')
     embeddings = np.array(conversation_embeddings).astype('float32')
-    faiss_index.reset()
-    faiss_index.add(embeddings)
-    _, indices = faiss_index.search(np.array([input_embedding]), k)
+    
+    index = faiss.IndexFlatL2(embeddings.shape[1])
+    index.add(embeddings)
+    _, indices = index.search(np.array([input_embedding]), k)
+    
     context = []
     for idx in indices[0]:
         if 0 <= idx < len(conversation_messages):
@@ -40,170 +41,121 @@ def get_relevant_context(user_input, k=3):
     return context
 
 def store_message(role, content):
-    """Save a message with embedding."""
+    """Thread-safe message storage with embedding."""
     embedding = embedding_model.encode([content])[0]
-    conversation_embeddings.append(embedding)
-    conversation_messages.append({
-        'role': role,
-        'content': content,
-        'timestamp': time.time()
-    })
+    
+    with conversation_lock:
+        conversation_embeddings.append(embedding)
+        conversation_messages.append({
+            'role': role,
+            'content': content,
+            'timestamp': time.time()
+        })
 
-def clean_incomplete_sentence(text):
-    """Ensure the response ends with punctuation."""
+def clean_response(text):
+    """Clean and format the response."""
+    # Basic cleaning
     text = text.strip()
     if not text.endswith(('.', '!', '?', '"', "'")):
-        text += "..."
-    return text
-
-def fix_markdown_tables(text):
-    """Ensure Markdown tables are valid and consistent."""
-    lines = text.split("\n")
-    fixed_lines = []
-    in_table = False
-    column_count = None
-    for line in lines:
-        if "|" in line:
-            if not in_table:
-                in_table = True
-                fixed_lines.append("")  # Blank line before table
-            if not line.strip().startswith("|"):
-                line = "|" + line
-            if not line.strip().endswith("|"):
-                line = line + "|"
-            cols = line.split("|")
-            if column_count is None:
-                column_count = len(cols)
+        text += "."
+    
+    # Fix markdown tables
+    if "|" in text:
+        lines = text.split("\n")
+        fixed_lines = []
+        in_table = False
+        
+        for line in lines:
+            if "|" in line:
+                if not in_table:
+                    fixed_lines.append("")  # Add blank line before table
+                    in_table = True
+                if not line.startswith("|"):
+                    line = "|" + line
+                if not line.endswith("|"):
+                    line = line + "|"
+                fixed_lines.append(line)
             else:
-                while len(cols) < column_count:
-                    cols.insert(-1, " ")
-                line = "|".join(cols)
-            fixed_lines.append(line)
-        else:
-            if in_table:
-                fixed_lines.append("")  # Blank line after table
-                in_table = False
-            fixed_lines.append(line)
-    return "\n".join(fixed_lines).strip()
-
-def format_response(text):
-    """Fix spacing, bullets, and table separation."""
-    text = re.sub(r'([.,!?])([A-Za-z])', r'\1 \2', text)
-    text = re.sub(r'(\|.*\|)', r'\n\1\n', text)
-    text = re.sub(r'(\S)\n- ', r'\1\n\n- ', text)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
-def is_table_incomplete(text):
-    """Check if the last table is incomplete."""
-    table_lines = [line for line in text.split("\n") if "|" in line]
-    if not table_lines:
-        return False
-    header_cols = table_lines[0].count("|")
-    last_row = table_lines[-1]
-    if last_row.count("|") < header_cols:
-        return True
-    if not last_row.strip().endswith("|"):
-        return True
-    return False
-
-def complete_table_with_model(partial_text, messages):
-    """Ask the model to finish the incomplete table."""
-    continuation_prompt = f"""
-The following table is incomplete. Continue the table exactly from where it stopped.
-Do not repeat any rows that are already written.
-Do not add explanations — only output the remaining table rows in Markdown.
-
-{partial_text}
-"""
-    continuation_messages = messages + [{"role": "user", "content": continuation_prompt}]
-    if tokenizer.chat_template:
-        prompt = tokenizer.apply_chat_template(continuation_messages, add_generation_prompt=True)
-    else:
-        prompt = "\n".join(m["content"] for m in continuation_messages)
-    continuation = ""
-    for chunk in stream_generate(model, tokenizer, prompt=prompt, max_tokens=200):
-        token_id = chunk.token
-        token_text = tokenizer.decode([token_id], skip_special_tokens=True)
-        continuation += token_text
-    return partial_text + "\n" + continuation.strip()
+                if in_table:
+                    fixed_lines.append("")  # Add blank line after table
+                    in_table = False
+                fixed_lines.append(line)
+        
+        text = "\n".join(fixed_lines).strip()
+    
+    return text
 
 @app.route('/api/chat/stream', methods=['POST'])
 def chat_stream():
     data = request.get_json()
     user_input = data.get('message', '').strip()
+    
     if not user_input:
         return jsonify({"error": "Empty input"}), 400
-
-    # Get 50% of relevant context
+    
+    # Store user message immediately
+    store_message('user', user_input)
+    
+    # Prepare context
     context_messages = get_relevant_context(user_input)
-    selected_context = random.sample(context_messages, max(1, len(context_messages) // 2)) if context_messages else []
-    context_text = "\n".join(selected_context)
-
+    context_text = "\n".join(context_messages) if context_messages else ""
+    
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a helpful AI assistant.\n"
-                "When answering:\n"
-                "- If the user question contains keywords such as 'compare', 'difference', 'differentiate', 'versus', 'vs', or 'comparison', present the main answer in table form.\n"
-                "- Use clear Markdown formatting for lists, headings, and table form\n"
-                "- Always leave a blank line before and after table form\n"
-                "- For lists, use proper bullet or number indentation\n"
-                "- Use emojis naturally to enhance clarity, not overload the response\n"
-                "- Maintain consistent spacing between words and punctuation\n"
-                "- Do not leave table form incomplete\n"
-                "- Always end with a complete sentence"
+                "You are Alan 1.0, an AI assistant developed by Alibaba and fine-tuned by Alan Joshua.\n"
+                "Format responses with proper Markdown:\n"
+                "- Use tables for comparisons\n"
+                "- Use bullet points for lists\n"
+                "- Maintain consistent spacing\n"
+                "- Always complete your thoughts"
             )
         },
         {
             "role": "user",
-            "content": f"<previous_conversation>\n{context_text}\n</previous_conversation>\n\n<user_input>\n{user_input}\n</user_input>"
+            "content": f"Context:\n{context_text}\n\nQuestion:\n{user_input}"
         }
     ]
 
-    if tokenizer.chat_template:
-        prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-    else:
-        prompt = f"{messages[0]['content']}\n\n{messages[1]['content']}"
-
-    def stream_response():
+    def generate_response():
         full_response = ""
         try:
-            for chunk in stream_generate(model, tokenizer, prompt=prompt, max_tokens=500):
+            # Generate response stream
+            prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True) if tokenizer.chat_template else \
+                    f"{messages[0]['content']}\n\nUser: {messages[1]['content']}\n\nAssistant:"
+            
+            for chunk in stream_generate(model, tokenizer, prompt=prompt, max_tokens=1000):
                 token_id = chunk.token
                 token_text = tokenizer.decode([token_id], skip_special_tokens=True)
                 full_response += token_text
-                if token_text.strip():
-                    yield f"data: {json.dumps({'token': {'text': token_text}})}\n\n"
-
-            # Post-processing order
-            full_response = clean_incomplete_sentence(full_response)
-            full_response = fix_markdown_tables(full_response)
-
-            # Check for incomplete table and complete it
-            if is_table_incomplete(full_response):
-                full_response = complete_table_with_model(full_response, messages)
-
-            full_response = format_response(full_response)
-            store_message('assistant', full_response)
-
-        except GeneratorExit:
-            if full_response:
-                full_response = clean_incomplete_sentence(full_response)
-                full_response = fix_markdown_tables(full_response)
-                if is_table_incomplete(full_response):
-                    full_response = complete_table_with_model(full_response, messages)
-                full_response = format_response(full_response)
-                store_message('assistant', full_response)
+                yield f"data: {json.dumps({'token': {'text': token_text}})}\n\n"
+            
+            # Post-process and store the complete response
+            processed_response = clean_response(full_response)
+            store_message('assistant', processed_response)
+            
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
 
-    return Response(stream_with_context(stream_response()), content_type='text/event-stream')
+    return Response(stream_with_context(generate_response()), content_type='text/event-stream')
 
 @app.route('/api/chat/history', methods=['GET'])
-def get_conversation_history():
-    return jsonify({'messages': conversation_messages})
+def get_history():
+    """Return conversation history sorted by timestamp"""
+    with conversation_lock:
+        sorted_messages = sorted(conversation_messages, key=lambda x: x['timestamp'])
+        return jsonify({'messages': sorted_messages})
+
+@app.route('/api/chat/clear', methods=['POST'])
+def clear_history():
+    """Clear conversation history"""
+    with conversation_lock:
+        conversation_embeddings.clear()
+        conversation_messages.clear()
+    return jsonify({'status': 'success'})
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=5006, threaded=True)
